@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PrintShop Counter Dashboard</title>
+  <style>
+    :root {
+      --bg: #f1f5f9; --card: #ffffff; --text: #0f172a; --muted: #64748b;
+      --primary: #2563eb; --danger: #dc2626; --success: #16a34a; --border: #e2e8f0;
+    }
+    * { box-sizing: border-box; font-family: "Segoe UI", system-ui, sans-serif; }
+    body { margin: 0; background: var(--bg); color: var(--text); }
+    .topbar {
+      background: #0f172a; color: #fff; padding: 14px 24px;
+      display: flex; justify-content: space-between; align-items: center;
+    }
+    .topbar h1 { margin: 0; font-size: 1.2rem; }
+    .topbar-actions { display: flex; gap: 10px; align-items: center; }
+    .btn {
+      padding: 8px 14px; border-radius: 8px; border: none; font-weight: 600;
+      cursor: pointer; font-size: 0.88rem;
+    }
+    .btn-primary { background: var(--primary); color: #fff; }
+    .btn-outline { background: #1e293b; color: #e2e8f0; border: 1px solid #334155; }
+    .btn-success { background: var(--success); color: #fff; }
+    .btn-danger { background: var(--danger); color: #fff; }
+    .btn-light { background: #e2e8f0; color: #1e293b; }
+    .container { max-width: 1100px; margin: 20px auto; padding: 0 18px; }
+    .tabs { display: flex; gap: 8px; margin-bottom: 16px; }
+    .tab {
+      padding: 10px 18px; border-radius: 10px; border: 1px solid var(--border);
+      background: #fff; font-weight: 700; cursor: pointer; color: var(--muted);
+    }
+    .tab.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+    .hint-bar {
+      background: #e0f2fe; color: #0369a1; padding: 8px 14px; border-radius: 8px;
+      font-size: 0.85rem; margin-bottom: 14px; display: flex; justify-content: space-between;
+    }
+    .job-card {
+      background: var(--card); border: 2px solid var(--border); border-radius: 12px;
+      padding: 16px; margin-bottom: 12px; display: grid;
+      grid-template-columns: 90px 1fr 260px auto; gap: 16px; align-items: center;
+    }
+    .job-card.selected { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(37,99,235,0.12); }
+    .token-badge {
+      background: #eff6ff; color: var(--primary); font-size: 1.6rem; font-weight: 900;
+      text-align: center; padding: 14px 8px; border-radius: 10px;
+    }
+    .badges { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+    .pill {
+      font-size: 0.76rem; font-weight: 600; padding: 3px 8px; border-radius: 6px;
+      background: #f1f5f9; color: #334155;
+    }
+    .pill.fix { background: #dcfce7; color: #166534; }
+    select { width: 100%; padding: 8px; border-radius: 8px; border: 1px solid var(--border); font-weight: 600; }
+    .actions { display: flex; gap: 8px; }
+    .modal-backdrop {
+      position: fixed; inset: 0; background: rgba(15, 23, 42, 0.55);
+      display: none; align-items: center; justify-content: center; z-index: 50;
+    }
+    .modal-backdrop.open { display: flex; }
+    .modal {
+      background: #fff; border-radius: 14px; padding: 24px; width: 92%; max-width: 480px;
+    }
+    .modal h2 { margin-top: 0; }
+    .form-row { margin-bottom: 12px; }
+    .form-row label { display: block; font-size: 0.85rem; font-weight: 600; margin-bottom: 4px; }
+    .form-row input[type="text"], .form-row input[type="number"] {
+      width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px;
+    }
+    .empty { text-align: center; padding: 48px; color: var(--muted); background: #fff; border-radius: 12px; }
+  </style>
+</head>
+<body>
+  <div class="topbar">
+    <div>
+      <h1 id="shopTitle">PrintShop Counter</h1>
+      <small id="mobileUrlText" style="color: #94a3b8;">Connecting...</small>
+    </div>
+    <div class="topbar-actions">
+      <button class="btn btn-outline" onclick="openLabModal()">Agent &amp; Spooler Lab</button>
+      <button class="btn btn-outline" onclick="openQrModal()">Counter QR Code</button>
+      <button class="btn btn-outline" onclick="openOnboarding()">Shop Settings</button>
+    </div>
+  </div>
+
+  <div class="container">
+    <div class="hint-bar">
+      <span>Shortcuts: <strong>Enter</strong> = Approve &amp; Print top job &nbsp;|&nbsp; <strong>Del / Esc</strong> = Reject</span>
+      <span>Test Mode: <strong>Virtual Print Simulator</strong> saves PDFs to <code>data/mock_prints</code></span>
+    </div>
+
+    <div class="tabs">
+      <button class="tab active" data-tab="pending" onclick="setTab('pending')">Pending (<span id="cntPending">0</span>)</button>
+      <button class="tab" data-tab="printing" onclick="setTab('printing')">Printing (<span id="cntPrinting">0</span>)</button>
+      <button class="tab" data-tab="completed" onclick="setTab('completed')">Completed (<span id="cntCompleted">0</span>)</button>
+    </div>
+
+    <div id="queueList"></div>
+  </div>
+
+  <!-- Agent & Spooler Lab Modal -->
+  <div class="modal-backdrop" id="labModal">
+    <div class="modal" style="max-width: 620px;">
+      <h2>Agent &amp; Windows Spooler Lab</h2>
+      <div class="form-row">
+        <label>Live Windows Spooler Probe (<code>win32print</code>)</label>
+        <pre id="spoolerProbeOut" style="background:#0f172a;color:#e2e8f0;padding:10px;border-radius:8px;font-size:0.78rem;max-height:170px;overflow:auto;">Loading...</pre>
+      </div>
+      <div class="form-row" style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+        <div>
+          <label>Hot-Swap <code>rules.json</code> Chunk Threshold</label>
+          <input type="number" id="labChunkThreshold" min="2" step="2" value="50" />
+        </div>
+        <div>
+          <label>Rules Version</label>
+          <input type="text" id="labRulesVersion" value="1.0.0" />
+        </div>
+      </div>
+      <div style="display: flex; gap: 10px; justify-content: flex-end;">
+        <button class="btn btn-light" onclick="closeModals()">Close</button>
+        <button class="btn btn-primary" onclick="saveHotRules()">Hot-Reload rules.json</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- QR Modal -->
+  <div class="modal-backdrop" id="qrModal">
+    <div class="modal" style="text-align: center;">
+      <h2>Counter Scan QR</h2>
+      <p style="color: var(--muted); font-size: 0.9rem;">Customers on your Wi-Fi scan this to send files:</p>
+      <img id="qrImage" src="/api/qr" alt="Counter QR" style="width: 240px; height: 240px; border: 1px solid #e2e8f0; border-radius: 10px;" />
+      <p id="qrUrlLabel" style="font-weight: 700; word-break: break-all;"></p>
+      <button class="btn btn-primary" onclick="window.print()">Print QR Standee</button>
+      <button class="btn btn-light" onclick="closeModals()">Close</button>
+    </div>
+  </div>
+
+  <!-- Onboarding / Settings Modal -->
+  <div class="modal-backdrop" id="settingsModal">
+    <div class="modal">
+      <h2>Shop Setup &amp; Printers</h2>
+      <div class="form-row">
+        <label>Shop Name</label>
+        <input type="text" id="cfgShopName" />
+      </div>
+      <div class="form-row" style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+        <div><label>B&amp;W Single (₹)</label><input type="number" id="cfgBwSingle" step="0.5" /></div>
+        <div><label>Color Single (₹)</label><input type="number" id="cfgColorSingle" step="0.5" /></div>
+      </div>
+      <div class="form-row">
+        <label>Visible Printers (uncheck private/billing printers)</label>
+        <div id="printerCheckboxes" style="max-height: 140px; overflow-y: auto; border: 1px solid #e2e8f0; padding: 8px; border-radius: 8px;"></div>
+      </div>
+      <div style="display: flex; gap: 10px; justify-content: flex-end;">
+        <button class="btn btn-light" onclick="closeModals()">Cancel</button>
+        <button class="btn btn-primary" onclick="saveSettings()">Save Setup</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let state = { jobs: [], printers: [], counts: { pending: 0, printing: 0, completed: 0 } };
+    let currentTab = "pending";
+
+    async function init() {
+      const infoRes = await fetch("/api/info");
+      const info = await infoRes.json();
+      document.getElementById("shopTitle").textContent = info.shop_name;
+      document.getElementById("mobileUrlText").textContent = `Mobile URL: ${info.mobile_url}`;
+      document.getElementById("qrUrlLabel").textContent = info.mobile_url;
+
+      if (!info.onboarded) openOnboarding(info);
+      connectWs();
+    }
+
+    function connectWs() {
+      const proto = location.protocol === "https:" ? "wss" : "ws";
+      const ws = new WebSocket(`${proto}://${location.host}/ws/dashboard`);
+      ws.onmessage = (ev) => {
+        const msg = JSON.parse(ev.data);
+        if (msg.type === "queue_update") {
+          state = msg;
+          document.getElementById("shopTitle").textContent = msg.shop_name;
+          render();
+        }
+      };
+      ws.onclose = () => setTimeout(connectWs, 2000);
+    }
+
+    function setTab(tab) {
+      currentTab = tab;
+      document.querySelectorAll(".tab").forEach(t => t.classList.toggle("active", t.dataset.tab === tab));
+      render();
+    }
+
+    function render() {
+      document.getElementById("cntPending").textContent = state.counts.pending;
+      document.getElementById("cntPrinting").textContent = state.counts.printing;
+      document.getElementById("cntCompleted").textContent = state.counts.completed;
+
+      const filtered = state.jobs.filter(j => {
+        if (currentTab === "pending") return j.status === "pending";
+        if (currentTab === "printing") return j.status === "printing" || j.status === "failed";
+        return j.status === "completed";
+      });
+
+      const container = document.getElementById("queueList");
+      if (!filtered.length) {
+        container.innerHTML = `<div class="empty">No ${currentTab} jobs right now.</div>`;
+        return;
+      }
+
+      const exposedPrinters = state.printers.filter(p => p.is_exposed);
+      container.innerHTML = filtered.map((job, idx) => {
+        const isFirstPending = currentTab === "pending" && idx === 0;
+        const printerOptions = exposedPrinters.map(p =>
+          `<option value="${p.name}" ${p.name === (job.assigned_printer || job.recommended_printer) ? "selected" : ""}>${p.name} (${p.status})</option>`
+        ).join("");
+        const fixesHtml = (job.auto_fixes || []).map(f => `<span class="pill fix">${f}</span>`).join("");
+
+        return `
+          <div class="job-card ${isFirstPending ? "selected" : ""}" data-job-id="${job.id}">
+            <div class="token-badge">#${job.token}</div>
+            <div>
+              <div style="font-weight: 700; font-size: 1rem;">${job.filename}</div>
+              <div class="badges">
+                <span class="pill">${job.selected_page_count}p &times; ${job.copies}</span>
+                <span class="pill">${job.color_mode.toUpperCase()}</span>
+                <span class="pill">${job.duplex_mode === "duplex" ? "2-Sided" : "1-Sided"}</span>
+                <span class="pill">${job.currency}${job.estimated_price}</span>
+                ${fixesHtml}
+              </div>
+              ${job.error_message ? `<div style="color:#dc2626;font-size:0.85rem;margin-top:6px;">Error: ${job.error_message}</div>` : ""}
+            </div>
+            <div>
+              <select id="printer-${job.id}" ${(job.status !== "pending" && job.status !== "failed") ? "disabled" : ""}>${printerOptions}</select>
+              ${job.chunk_paths && job.chunk_paths.length > 1 ? `<small style="color:#64748b;display:block;margin-top:4px;">Chunks: ${job.completed_chunks}/${job.chunk_paths.length} printed</small>` : ""}
+            </div>
+            <div class="actions">
+              ${job.status === "pending" ? `
+                <a class="btn btn-light" href="/api/jobs/${job.id}/preview" target="_blank">Preview</a>
+                <button class="btn btn-success" onclick="approveJob('${job.id}')">Print</button>
+                <button class="btn btn-danger" onclick="rejectJob('${job.id}')">Reject</button>
+              ` : job.status === "failed" ? `
+                <button class="btn btn-primary" onclick="rerouteJob('${job.id}')">Reroute Remaining</button>
+                <button class="btn btn-danger" onclick="rejectJob('${job.id}')">Cancel</button>
+              ` : job.status === "completed" ? `
+                <button class="btn btn-light" onclick="wipeJob('${job.id}')">Wipe Now</button>
+              ` : `<span>Printing...</span>`}
+            </div>
+          </div>
+        `;
+      }).join("");
+    }
+
+    async function approveJob(jobId) {
+      const sel = document.getElementById(`printer-${jobId}`);
+      const printerName = sel ? sel.value : null;
+      await fetch(`/api/jobs/${jobId}/approve`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ printer_name: printerName }),
+      });
+    }
+
+    async function rejectJob(jobId) {
+      await fetch(`/api/jobs/${jobId}/reject`, { method: "POST" });
+    }
+
+    async function rerouteJob(jobId) {
+      const sel = document.getElementById(`printer-${jobId}`);
+      const selectedBackup = sel ? sel.value : null;
+      const fallback = state.printers.find(p => p.is_exposed && p.is_online && p.name !== "Virtual Faulty Printer (Jam Test)")?.name;
+      const backup = (selectedBackup && selectedBackup !== "Virtual Faulty Printer (Jam Test)") ? selectedBackup : fallback;
+      if (!backup) return alert("No online backup printer available.");
+      await fetch(`/api/jobs/${jobId}/reroute`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ backup_printer: backup }),
+      });
+    }
+
+    async function openLabModal() {
+      document.getElementById("labModal").classList.add("open");
+      const [spoolRes, rulesRes] = await Promise.all([
+        fetch("/api/spooler-health"),
+        fetch("/api/rules"),
+      ]);
+      const spoolData = await spoolRes.json();
+      const rulesData = await rulesRes.json();
+      document.getElementById("spoolerProbeOut").textContent = JSON.stringify(spoolData, null, 2);
+      document.getElementById("labChunkThreshold").value = rulesData.chunk_threshold_pages || 50;
+      document.getElementById("labRulesVersion").value = rulesData.version || "1.0.0";
+    }
+
+    async function saveHotRules() {
+      const chunkThreshold = parseInt(document.getElementById("labChunkThreshold").value || "50", 10);
+      const version = document.getElementById("labRulesVersion").value || "1.0.0";
+      await fetch("/api/rules", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ chunk_threshold_pages: chunkThreshold, version }),
+      });
+      closeModals();
+    }
+
+    async function wipeJob(jobId) {
+      await fetch(`/api/jobs/${jobId}/wipe`, { method: "POST" });
+    }
+
+    document.addEventListener("keydown", (e) => {
+      if (document.querySelector(".modal-backdrop.open") || currentTab !== "pending") return;
+      const firstPending = state.jobs.find(j => j.status === "pending");
+      if (!firstPending) return;
+      if (e.key === "Enter") { e.preventDefault(); approveJob(firstPending.id); }
+      if (e.key === "Escape" || e.key === "Delete") { e.preventDefault(); rejectJob(firstPending.id); }
+    });
+
+    function openQrModal() {
+      document.getElementById("qrImage").src = `/api/qr?t=${Date.now()}`;
+      document.getElementById("qrModal").classList.add("open");
+    }
+
+    async function openOnboarding(prefetchedInfo) {
+      const info = prefetchedInfo || await (await fetch("/api/info")).json();
+      document.getElementById("cfgShopName").value = info.shop_name;
+      document.getElementById("cfgBwSingle").value = info.pricing.bw_single;
+      document.getElementById("cfgColorSingle").value = info.pricing.color_single;
+      document.getElementById("printerCheckboxes").innerHTML = info.printers.map(p => `
+        <label style="display:flex;align-items:center;gap:8px;margin-bottom:6px;font-weight:500;">
+          <input type="checkbox" class="printer-chk" value="${p.name}" ${p.is_exposed ? "checked" : ""} />
+          <span>${p.name} <small style="color:#64748b">(${p.status})</small></span>
+        </label>
+      `).join("");
+      document.getElementById("settingsModal").classList.add("open");
+    }
+
+    async function saveSettings() {
+      const exposed = [...document.querySelectorAll(".printer-chk:checked")].map(c => c.value);
+      const bw = parseFloat(document.getElementById("cfgBwSingle").value || "2");
+      const col = parseFloat(document.getElementById("cfgColorSingle").value || "10");
+      await fetch("/api/onboarding", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          shop_name: document.getElementById("cfgShopName").value,
+          exposed_printers: exposed,
+          bw_single: bw,
+          bw_duplex: Math.max(0.5, bw - 0.5),
+          color_single: col,
+          color_duplex: Math.max(1, col - 1),
+        }),
+      });
+      closeModals();
+    }
+
+    function closeModals() {
+      document.querySelectorAll(".modal-backdrop").forEach(m => m.classList.remove("open"));
+    }
+
+    init();
+  </script>
+</body>
+</html>
